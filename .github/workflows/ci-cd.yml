@@ -83,6 +83,9 @@ jobs:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
+      # Unique version per run so Exchange never rejects a re-publish (assets are immutable)
+      - name: Set unique build version
+        run: mvn -B versions:set -DnewVersion=1.0.${{ github.run_number }} -DgenerateBackupPoms=false
       - name: Deploy asset to Exchange
         run: mvn -B -s .github/settings.xml clean deploy -DskipMunitTests=true
 
@@ -103,6 +106,9 @@ jobs:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
+      # Same version as the publish job so CloudHub deploys the matching artifact
+      - name: Set unique build version
+        run: mvn -B versions:set -DnewVersion=1.0.${{ github.run_number }} -DgenerateBackupPoms=false
       # `package mule:deploy` deploys straight to CloudHub WITHOUT the maven `deploy`
       # phase (which would try to re-publish to Exchange — already done in the prior job).
       - name: Deploy to CloudHub
