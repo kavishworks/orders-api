@@ -1,11 +1,22 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <groupId>com.mulesoft.app</groupId>
+    <!-- groupId MUST be the Anypoint org ID for Exchange publishing -->
+    <groupId>f1a1a380-4a17-401e-b110-4ca2e9c74c69</groupId>
     <artifactId>orders-api</artifactId>
     <version>1.0.0</version>
     <packaging>mule-application</packaging>
     <name>orders-api</name>
+
+    <!-- Tells `mvn deploy` where to publish the asset in Anypoint Exchange -->
+    <distributionManagement>
+        <repository>
+            <id>anypoint-exchange-v3</id>
+            <name>Anypoint Exchange</name>
+            <url>https://maven.anypoint.mulesoft.com/api/v3/organizations/f1a1a380-4a17-401e-b110-4ca2e9c74c69/maven</url>
+            <layout>default</layout>
+        </repository>
+    </distributionManagement>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
