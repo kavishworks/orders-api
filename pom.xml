@@ -117,7 +117,9 @@
                         <version>${mule.maven.plugin.version}</version>
                         <extensions>true</extensions>
                         <configuration>
-                            <cloudHubDeployment>
+                            <!-- CloudHub 2.0 (org is entitled for CH2, not CH1). Targets the
+                                 private space 'agent-fabric-demo-network' in us-east-2. -->
+                            <cloudhub2Deployment>
                                 <uri>https://anypoint.mulesoft.com</uri>
                                 <muleVersion>${app.runtime}</muleVersion>
                                 <connectedAppClientId>${connectedApp.clientId}</connectedAppClientId>
@@ -125,13 +127,14 @@
                                 <connectedAppGrantType>client_credentials</connectedAppGrantType>
                                 <applicationName>${cloudhub.appName}</applicationName>
                                 <environment>${cloudhub.environment}</environment>
-                                <region>us-east-2</region>
-                                <workers>1</workers>
-                                <workerType>MICRO</workerType>
+                                <target>agent-fabric-demo-network</target>
+                                <provider>MC</provider>
+                                <replicas>1</replicas>
+                                <vCores>0.1</vCores>
                                 <properties>
                                     <anypoint.platform.config.analytics.agent.enabled>true</anypoint.platform.config.analytics.agent.enabled>
                                 </properties>
-                            </cloudHubDeployment>
+                            </cloudhub2Deployment>
                         </configuration>
                     </plugin>
                 </plugins>
