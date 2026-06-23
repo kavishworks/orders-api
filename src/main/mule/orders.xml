@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- POST /orders : validate -> enrich against inventory -> price -> respond -->
+    <flow name="post-order-flow">
+        <http:listener config-ref="HTTP_Listener_config" path="/orders" allowedMethods="POST">
+            <http:response statusCode="201"/>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+            </http:error-response>
+        </http:listener>
+
+        <!-- Preserve the incoming order so downstream payload changes don't clobber it -->
+        <set-variable variableName="order" value="#[payload]" doc:name="capture order"/>
+
+        <flow-ref name="validate-order-subflow" doc:name="validate"/>
+        <flow-ref name="enrich-inventory-subflow" doc:name="enrich"/>
+        <flow-ref name="price-order-subflow" doc:name="price"/>
+
+        <error-handler ref="globalErrorHandler"/>
+    </flow>
+
+    <!-- GET /orders/{orderId} : lookup with a not-found branch (only hit by an error test) -->
+    <flow name="get-order-flow">
+        <http:listener config-ref="HTTP_Listener_config" path="/orders/{orderId}" allowedMethods="GET">
+            <http:response statusCode="200"/>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+            </http:error-response>
+        </http:listener>
+
+        <choice doc:name="known order?">
+            <when expression='#[attributes.uriParams.orderId startsWith "ORD-"]'>
+                <ee:transform doc:name="build order view">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  orderId: attributes.uriParams.orderId,
+  status: "CONFIRMED"
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <raise-error type="ORDERS:NOT_FOUND" description="Unknown order id"/>
+            </otherwise>
+        </choice>
+
+        <error-handler ref="globalErrorHandler"/>
+    </flow>
+
+    <!-- Validation: raise ORDERS:VALIDATION when the request is malformed -->
+    <sub-flow name="validate-order-subflow">
+        <choice doc:name="valid order?">
+            <when expression='#[(vars.order.customerId default "") == "" or (sizeOf(vars.order.items default [])) == 0]'>
+                <raise-error type="ORDERS:VALIDATION" description="customerId and at least one item are required"/>
+            </when>
+            <otherwise>
+                <logger level="DEBUG" message="order passed validation"/>
+            </otherwise>
+        </choice>
+    </sub-flow>
+
+    <!-- Enrichment: call inventory service; map a connectivity failure to a domain error -->
+    <sub-flow name="enrich-inventory-subflow">
+        <http:request method="GET" config-ref="Inventory_HTTP_Request_config"
+                      path="${inventory.basePath}/availability" target="inventory">
+            <error-mapping sourceType="HTTP:CONNECTIVITY" targetType="ORDERS:INVENTORY_UNAVAILABLE"/>
+            <error-mapping sourceType="HTTP:TIMEOUT" targetType="ORDERS:INVENTORY_UNAVAILABLE"/>
+            <http:query-params>#[{ sku: (vars.order.items[0].sku default "") }]</http:query-params>
+        </http:request>
+    </sub-flow>
+
+    <!-- Pricing: compute totals from the captured order. Applies a volume discount branch
+         (only exercised when an item qty >= 10) so coverage has a branch the basic tests miss. -->
+    <sub-flow name="price-order-subflow">
+        <ee:transform doc:name="price order">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var lineItems = vars.order.items map (item) -> {
+    sku: item.sku,
+    quantity: item.quantity,
+    unitPrice: item.unitPrice,
+    lineTotal: item.quantity * item.unitPrice
+}
+var subtotal = sum(lineItems.lineTotal default [])
+var taxRate = 0.08
+// volume discount: 5% off when any line has qty >= 10
+var discountRate = if (sizeOf(vars.order.items filter ((i) -> i.quantity >= 10)) > 0) 0.05 else 0
+var discounted = subtotal * (1 - discountRate)
+---
+{
+  customerId: vars.order.customerId,
+  items: lineItems,
+  subtotal: subtotal,
+  discountApplied: discountRate > 0,
+  tax: round((discounted * taxRate) * 100) / 100,
+  total: round((discounted * (1 + taxRate)) * 100) / 100,
+  inventory: vars.inventory default null
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </sub-flow>
+
+</mule>

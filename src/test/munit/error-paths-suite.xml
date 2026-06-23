@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <munit:config name="error-paths-suite.xml"/>
+
+    <!-- These are the tests added live (or via ACB AI gen) to cross the 80% gate.
+         They cover the branches the happy path misses: validation, inventory outage,
+         the volume-discount branch, and the GET not-found branch. -->
+
+    <!-- 1: invalid order (no items) -> ORDERS:VALIDATION -> 400 -->
+    <munit:test name="post-order-validation-error" expectedErrorType="ORDERS:VALIDATION">
+        <munit:execution>
+            <munit:set-event>
+                <munit:payload value='#[output application/json --- { customerId: "CUST-100", items: [] }]'/>
+            </munit:set-event>
+            <flow-ref name="post-order-flow"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.error]"
+                                     is="#[MunitTools::equalTo('VALIDATION_ERROR')]"/>
+            <munit-tools:assert-that expression="#[vars.httpStatus]"
+                                     is="#[MunitTools::equalTo(400)]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- 2: inventory unreachable -> ORDERS:INVENTORY_UNAVAILABLE -> 503 -->
+    <munit:test name="post-order-inventory-unavailable" expectedErrorType="ORDERS:INVENTORY_UNAVAILABLE">
+        <munit:behavior>
+            <munit-tools:mock-when processor="http:request">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="config-ref" whereValue="Inventory_HTTP_Request_config"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="HTTP:CONNECTIVITY"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event>
+                <munit:payload value='#[output application/json --- { customerId: "CUST-100", items: [ { sku: "SKU-1", quantity: 1, unitPrice: 10 } ] }]'/>
+            </munit:set-event>
+            <flow-ref name="post-order-flow"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.error]"
+                                     is="#[MunitTools::equalTo('INVENTORY_UNAVAILABLE')]"/>
+            <munit-tools:assert-that expression="#[vars.httpStatus]"
+                                     is="#[MunitTools::equalTo(503)]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- 3: volume discount branch (qty >= 10 -> 5% off) -->
+    <munit:test name="post-order-volume-discount">
+        <munit:behavior>
+            <munit-tools:mock-when processor="http:request">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="config-ref" whereValue="Inventory_HTTP_Request_config"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value='#[output application/json --- { available: 99 }]'/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event>
+                <munit:payload value='#[output application/json --- { customerId: "CUST-200", items: [ { sku: "A", quantity: 10, unitPrice: 10 } ] }]'/>
+            </munit:set-event>
+            <flow-ref name="post-order-flow"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.discountApplied]"
+                                     is="#[MunitTools::equalTo(true)]"
+                                     message="qty 10 should trigger the 5% volume discount"/>
+            <munit-tools:assert-that expression="#[payload.subtotal]"
+                                     is="#[MunitTools::equalTo(100)]"/>
+            <munit-tools:assert-that expression="#[payload.total]"
+                                     is="#[MunitTools::equalTo(102.6)]"
+                                     message="100 * 0.95 * 1.08 = 102.6"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- 4: GET unknown order -> ORDERS:NOT_FOUND -> 404 -->
+    <munit:test name="get-order-not-found" expectedErrorType="ORDERS:NOT_FOUND">
+        <munit:execution>
+            <munit:set-event>
+                <munit:attributes value="#[output application/java --- { uriParams: { orderId: 'XXX-1' } }]"/>
+            </munit:set-event>
+            <flow-ref name="get-order-flow"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.error]"
+                                     is="#[MunitTools::equalTo('NOT_FOUND')]"/>
+            <munit-tools:assert-that expression="#[vars.httpStatus]"
+                                     is="#[MunitTools::equalTo(404)]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- 5: unmapped downstream failure -> falls through to the generic ANY handler -> 500 -->
+    <munit:test name="post-order-unexpected-error" expectedErrorType="HTTP:INTERNAL_SERVER_ERROR">
+        <munit:behavior>
+            <munit-tools:mock-when processor="http:request">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="config-ref" whereValue="Inventory_HTTP_Request_config"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="HTTP:INTERNAL_SERVER_ERROR"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event>
+                <munit:payload value='#[output application/json --- { customerId: "CUST-100", items: [ { sku: "SKU-1", quantity: 1, unitPrice: 10 } ] }]'/>
+            </munit:set-event>
+            <flow-ref name="post-order-flow"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.error]"
+                                     is="#[MunitTools::equalTo('INTERNAL_ERROR')]"/>
+            <munit-tools:assert-that expression="#[vars.httpStatus]"
+                                     is="#[MunitTools::equalTo(500)]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- 6: GET happy path (covers the 'known order' branch of the choice) -->
+    <munit:test name="get-order-found">
+        <munit:execution>
+            <munit:set-event>
+                <munit:attributes value="#[output application/java --- { uriParams: { orderId: 'ORD-9' } }]"/>
+            </munit:set-event>
+            <flow-ref name="get-order-flow"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.status]"
+                                     is="#[MunitTools::equalTo('CONFIRMED')]"/>
+        </munit:validation>
+    </munit:test>
+
+</mule>

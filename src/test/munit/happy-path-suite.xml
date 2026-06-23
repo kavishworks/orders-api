@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <munit:config name="happy-path-suite.xml"/>
+
+    <!-- Happy path only. Intentionally does NOT exercise validation failures,
+         inventory outage, the volume-discount branch, or the GET not-found branch
+         -> coverage lands BELOW the 80% gate. This is the "before" state in the demo. -->
+    <munit:test name="post-order-happy-path">
+        <munit:behavior>
+            <munit-tools:mock-when processor="http:request">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="config-ref" whereValue="Inventory_HTTP_Request_config"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value='#[output application/json --- { sku: "SKU-1", available: 25 }]'/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <munit:set-event>
+                <munit:payload value='#[output application/json --- { customerId: "CUST-100", items: [ { sku: "SKU-1", quantity: 2, unitPrice: 50 } ] }]'/>
+            </munit:set-event>
+            <flow-ref name="post-order-flow"/>
+        </munit:execution>
+
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.subtotal]"
+                                     is="#[MunitTools::equalTo(100)]"
+                                     message="Subtotal should be qty*unitPrice = 100"/>
+            <munit-tools:assert-that expression="#[payload.total]"
+                                     is="#[MunitTools::equalTo(108.0)]"
+                                     message="No discount at qty 2: 100 + 8% tax = 108"/>
+            <munit-tools:assert-that expression="#[payload.discountApplied]"
+                                     is="#[MunitTools::equalTo(false)]"/>
+        </munit:validation>
+    </munit:test>
+
+</mule>

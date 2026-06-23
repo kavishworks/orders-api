@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- Inline global properties (no external file) so the app deploys identically
+         under ACB's MUnit stager, local Maven, and CloudHub. Override per-env at deploy. -->
+    <global-property name="http.port" value="8081"/>
+    <global-property name="inventory.host" value="inventory-service.internal"/>
+    <global-property name="inventory.port" value="443"/>
+    <global-property name="inventory.basePath" value="/api/v1"/>
+
+    <http:listener-config name="HTTP_Listener_config">
+        <http:listener-connection host="0.0.0.0" port="${http.port}"/>
+    </http:listener-config>
+
+    <!-- Downstream inventory service the order is enriched against. Mocked in MUnit. -->
+    <http:request-config name="Inventory_HTTP_Request_config">
+        <http:request-connection protocol="HTTPS"
+                                 host="${inventory.host}"
+                                 port="${inventory.port}"/>
+    </http:request-config>
+
+    <!-- Reusable error handler applied to the API flows -->
+    <error-handler name="globalErrorHandler">
+        <on-error-propagate type="ORDERS:VALIDATION" logException="false">
+            <ee:transform doc:name="400 body">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  error: "VALIDATION_ERROR",
+  message: error.description default "Invalid order request"
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+        </on-error-propagate>
+
+        <on-error-propagate type="ORDERS:NOT_FOUND" logException="false">
+            <ee:transform doc:name="404 body">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  error: "NOT_FOUND",
+  message: "Order not found"
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+        </on-error-propagate>
+
+        <on-error-propagate type="ORDERS:INVENTORY_UNAVAILABLE" logException="true">
+            <ee:transform doc:name="503 body">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  error: "INVENTORY_UNAVAILABLE",
+  message: "Inventory service could not be reached"
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">503</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+        </on-error-propagate>
+
+        <on-error-propagate type="ANY" logException="true">
+            <ee:transform doc:name="500 body">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  error: "INTERNAL_ERROR",
+  message: "Unexpected error processing order"
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+        </on-error-propagate>
+    </error-handler>
+
+</mule>
