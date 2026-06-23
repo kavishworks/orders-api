@@ -13,7 +13,11 @@ on:
 
 env:
   JAVA_VERSION: '17'
-  MAVEN_OPTS: '-Dmaven.repo.local=.m2/repository'
+  # Anypoint Exchange + EE-repo credentials, read by .github/settings.xml via ${env.*}
+  ANYPOINT_USERNAME: ${{ secrets.ANYPOINT_USERNAME }}
+  ANYPOINT_PASSWORD: ${{ secrets.ANYPOINT_PASSWORD }}
+  NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
+  NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
 
 jobs:
   # ----------------------------------------------------------------------
@@ -41,29 +45,13 @@ jobs:
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
 
-      # Inject the EE repo + Exchange credentials into a settings.xml for the runner.
-      - name: Configure Maven settings
-        uses: whelk-io/maven-settings-xml-action@v22
-        with:
-          servers: >
-            [
-              { "id": "anypoint-exchange-v3", "username": "${{ secrets.ANYPOINT_USERNAME }}", "password": "${{ secrets.ANYPOINT_PASSWORD }}" },
-              { "id": "nexus-repo", "username": "${{ secrets.NEXUS_USERNAME }}", "password": "${{ secrets.NEXUS_PASSWORD }}" }
-            ]
-          repositories: >
-            [
-              { "id": "anypoint-exchange-v3", "url": "https://maven.anypoint.mulesoft.com/api/v3/maven" },
-              { "id": "mulesoft-releases", "url": "https://repository.mulesoft.org/releases/" },
-              { "id": "nexus-repo", "url": "https://repository.mulesoft.org/nexus-ee/content/repositories/releases-ee/" }
-            ]
-
       # THE QUALITY GATES: MUnit runs in `mvn verify`; coverage < 80% fails the build
       # (failBuild=true in the pom). Sonar runs in the same pass.
       - name: Build, run MUnit + coverage gate, Sonar scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          mvn -B clean verify \
+          mvn -B -s .github/settings.xml clean verify \
             org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
             -Dsonar.token=$SONAR_TOKEN
 
@@ -95,22 +83,8 @@ jobs:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
-      - name: Configure Maven settings
-        uses: whelk-io/maven-settings-xml-action@v22
-        with:
-          servers: >
-            [
-              { "id": "anypoint-exchange-v3", "username": "${{ secrets.ANYPOINT_USERNAME }}", "password": "${{ secrets.ANYPOINT_PASSWORD }}" },
-              { "id": "nexus-repo", "username": "${{ secrets.NEXUS_USERNAME }}", "password": "${{ secrets.NEXUS_PASSWORD }}" }
-            ]
-          repositories: >
-            [
-              { "id": "anypoint-exchange-v3", "url": "https://maven.anypoint.mulesoft.com/api/v3/maven" },
-              { "id": "mulesoft-releases", "url": "https://repository.mulesoft.org/releases/" },
-              { "id": "nexus-repo", "url": "https://repository.mulesoft.org/nexus-ee/content/repositories/releases-ee/" }
-            ]
       - name: Deploy asset to Exchange
-        run: mvn -B clean deploy -DskipMunitTests=true
+        run: mvn -B -s .github/settings.xml clean deploy -DskipMunitTests=true
 
   # ----------------------------------------------------------------------
   # 3. Deploy to CloudHub. Guarded by the 'production' Environment approval.
@@ -129,23 +103,9 @@ jobs:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
-      - name: Configure Maven settings
-        uses: whelk-io/maven-settings-xml-action@v22
-        with:
-          servers: >
-            [
-              { "id": "anypoint-exchange-v3", "username": "${{ secrets.ANYPOINT_USERNAME }}", "password": "${{ secrets.ANYPOINT_PASSWORD }}" },
-              { "id": "nexus-repo", "username": "${{ secrets.NEXUS_USERNAME }}", "password": "${{ secrets.NEXUS_PASSWORD }}" }
-            ]
-          repositories: >
-            [
-              { "id": "anypoint-exchange-v3", "url": "https://maven.anypoint.mulesoft.com/api/v3/maven" },
-              { "id": "mulesoft-releases", "url": "https://repository.mulesoft.org/releases/" },
-              { "id": "nexus-repo", "url": "https://repository.mulesoft.org/nexus-ee/content/repositories/releases-ee/" }
-            ]
       - name: Deploy to CloudHub
         run: |
-          mvn -B clean deploy -Pcloudhub -DskipMunitTests=true \
+          mvn -B -s .github/settings.xml clean deploy -Pcloudhub -DskipMunitTests=true \
             -DconnectedApp.clientId=${{ secrets.CONNECTED_APP_CLIENT_ID }} \
             -DconnectedApp.clientSecret=${{ secrets.CONNECTED_APP_CLIENT_SECRET }} \
             -Dcloudhub.appName=hp-orders-api-demo \
