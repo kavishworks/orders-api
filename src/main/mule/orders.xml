@@ -19,7 +19,7 @@
         </http:listener>
 
         <!-- demo test -->
-
+<!--Sample comment -->
         <!-- Preserve the incoming order so downstream payload changes don't clobber it -->
         <set-variable variableName="order" value="#[payload]" doc:name="capture order"/>
 
