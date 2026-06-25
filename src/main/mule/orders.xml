@@ -29,6 +29,7 @@
 
         <error-handler ref="globalErrorHandler"/>
     </flow>
+    <!--Demo test-->
 <!--Sample comment-->
     <!-- GET /orders/{orderId} : lookup with a not-found branch (only hit by an error test) -->
     <flow name="get-order-flow">
