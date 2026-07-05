@@ -10,10 +10,7 @@
         <version>1.0.0</version>
     </parent>
 
-    <!-- groupId MUST be the Anypoint org ID for Exchange publishing.
-         Same as parent's groupId (the org id), so it's inherited — but stated
-         explicitly here for clarity. Org rotated 2026-07-04 (old expired org
-         was f1a1a380-4a17-401e-b110-4ca2e9c74c69). -->
+    
     <groupId>b427a410-6d5a-46ee-b765-cf8b0e67b394</groupId>
     <artifactId>orders-api</artifactId>
     <version>1.0.0</version>

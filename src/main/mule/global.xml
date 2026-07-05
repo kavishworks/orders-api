@@ -24,7 +24,15 @@
     <http:request-config name="Inventory_HTTP_Request_config">
         <http:request-connection protocol="HTTPS"
                                  host="${inventory.host}"
-                                 port="${inventory.port}"/>
+                                 port="${inventory.port}">
+            <!-- DEMO VULNERABILITY (planted for SonarQube): hardcoded credentials
+                 in source. Sonar flags this as a security hotspot / vulnerability
+                 (hardcoded secret). The correct fix is a secure property placeholder. -->
+            <http:authentication>
+                <http:basic-authentication username="svc_inventory"
+                                            password="Sup3rSecr3t_Inv@2024!"/>
+            </http:authentication>
+        </http:request-connection>
     </http:request-config>
 
     <!-- Reusable error handler applied to the API flows -->
