@@ -16,6 +16,15 @@
             <username>${env.NEXUS_USERNAME}</username>
             <password>${env.NEXUS_PASSWORD}</password>
         </server>
+        <!-- GitHub Packages: resolves the C4E parent POM (kavishworks/c4e-mule-parent).
+             GITHUB_ACTOR + GITHUB_TOKEN are provided by Actions automatically. If the
+             package is private and in a different repo, GITHUB_TOKEN needs read:packages
+             access to it (see workflow note). -->
+        <server>
+            <id>github</id>
+            <username>${env.GITHUB_ACTOR}</username>
+            <password>${env.GITHUB_TOKEN}</password>
+        </server>
     </servers>
 
     <profiles>

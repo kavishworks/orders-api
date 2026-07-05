@@ -1,8 +1,20 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <!-- groupId MUST be the Anypoint org ID for Exchange publishing -->
-    <groupId>f1a1a380-4a17-401e-b110-4ca2e9c74c69</groupId>
+
+    <!-- Inherit the C4E standard: coverage gate + dev/prod profiles + toolchain
+         versions + MUnit deps all come from here. This app copies NONE of that. -->
+    <parent>
+        <groupId>b427a410-6d5a-46ee-b765-cf8b0e67b394</groupId>
+        <artifactId>c4e-mule-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <!-- groupId MUST be the Anypoint org ID for Exchange publishing.
+         Same as parent's groupId (the org id), so it's inherited — but stated
+         explicitly here for clarity. Org rotated 2026-07-04 (old expired org
+         was f1a1a380-4a17-401e-b110-4ca2e9c74c69). -->
+    <groupId>b427a410-6d5a-46ee-b765-cf8b0e67b394</groupId>
     <artifactId>orders-api</artifactId>
     <version>1.0.0</version>
     <packaging>mule-application</packaging>
@@ -13,7 +25,7 @@
         <repository>
             <id>anypoint-exchange-v3</id>
             <name>Anypoint Exchange</name>
-            <url>https://maven.anypoint.mulesoft.com/api/v3/organizations/f1a1a380-4a17-401e-b110-4ca2e9c74c69/maven</url>
+            <url>https://maven.anypoint.mulesoft.com/api/v3/organizations/b427a410-6d5a-46ee-b765-cf8b0e67b394/maven</url>
             <layout>default</layout>
         </repository>
     </distributionManagement>
@@ -23,10 +35,10 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <java.version>17</java.version>
-        <mule.version>4.9.0</mule.version>
-        <app.runtime>4.9.15</app.runtime>
-        <!-- Quality gate: minimum MUnit coverage required to pass the build -->
-        <munit.coverage.required>80</munit.coverage.required>
+        <!-- NOTE: coverage threshold + failBuild are NOT set here on purpose.
+             They are governed by the C4E parent's dev/prod profiles. Setting
+             munit.coverage.required here would override the parent and break
+             the environment-aware gate. -->
         <!-- SonarCloud -->
         <sonar.organization>kavishworks</sonar.organization>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
@@ -71,38 +83,10 @@
                     <classifier>mule-application</classifier>
                 </configuration>
             </plugin>
-            <plugin>
-                <groupId>com.mulesoft.munit.tools</groupId>
-                <artifactId>munit-maven-plugin</artifactId>
-                <version>${munit.version}</version>
-                <executions>
-                    <execution>
-                        <id>test</id>
-                        <phase>test</phase>
-                        <goals>
-                            <goal>test</goal>
-                            <goal>coverage-report</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <runtimeVersion>${app.runtime}</runtimeVersion>
-                    <skipMunitTests>false</skipMunitTests>
-                    <coverage>
-                        <runCoverage>true</runCoverage>
-                        <!-- THE GATE: build fails below the threshold -->
-                        <failBuild>true</failBuild>
-                        <requiredApplicationCoverage>${munit.coverage.required}</requiredApplicationCoverage>
-                        <requiredResourceCoverage>${munit.coverage.required}</requiredResourceCoverage>
-                        <requiredFlowCoverage>${munit.coverage.required}</requiredFlowCoverage>
-                        <formats>
-                            <format>html</format>
-                            <format>sonar</format>
-                            <format>json</format>
-                        </formats>
-                    </coverage>
-                </configuration>
-            </plugin>
+            <!-- munit-maven-plugin is INHERITED from c4e-mule-parent (coverage
+                 gate + dev/prod profiles). Intentionally NOT redeclared here —
+                 redeclaring with a hardcoded failBuild/threshold would override
+                 the parent and break the environment-aware gate. -->
         </plugins>
     </build>
     <profiles>
@@ -118,7 +102,8 @@
                         <extensions>true</extensions>
                         <configuration>
                             <!-- CloudHub 2.0 (org is entitled for CH2, not CH1). Targets the
-                                 private space 'agent-fabric-demo-network' in us-east-2. -->
+                                 shared space Cloudhub-US-East-2 in the new org (b427a410-...).
+                                 Old org used private space 'agent-fabric-demo-network'. -->
                             <cloudhub2Deployment>
                                 <uri>https://anypoint.mulesoft.com</uri>
                                 <muleVersion>${app.runtime}</muleVersion>
@@ -127,7 +112,7 @@
                                 <connectedAppGrantType>client_credentials</connectedAppGrantType>
                                 <applicationName>${cloudhub.appName}</applicationName>
                                 <environment>${cloudhub.environment}</environment>
-                                <target>agent-fabric-demo-network</target>
+                                <target>Cloudhub-US-East-2</target>
                                 <provider>MC</provider>
                                 <replicas>1</replicas>
                                 <vCores>0.1</vCores>
@@ -142,34 +127,24 @@
         </profile>
     </profiles>
     <dependencies>
+        <!-- App-specific runtime dependency. The MUnit test deps
+             (munit-tools, munit-runner, assertions) are INHERITED from
+             c4e-mule-parent — not redeclared here. -->
         <dependency>
             <groupId>org.mule.connectors</groupId>
             <artifactId>mule-http-connector</artifactId>
             <version>1.10.3</version>
             <classifier>mule-plugin</classifier>
         </dependency>
-        <dependency>
-            <groupId>com.mulesoft.munit</groupId>
-            <artifactId>munit-tools</artifactId>
-            <version>${munit.version}</version>
-            <classifier>mule-plugin</classifier>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.mulesoft.munit</groupId>
-            <artifactId>munit-runner</artifactId>
-            <version>${munit.version}</version>
-            <classifier>mule-plugin</classifier>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mule.weave</groupId>
-            <artifactId>assertions</artifactId>
-            <version>1.2.1</version>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
     <repositories>
+        <!-- GitHub Packages: hosts the C4E parent POM. Needs a 'github' server
+             (read:packages) in settings.xml. In real HP this would be Nexus. -->
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages — c4e-mule-parent</name>
+            <url>https://maven.pkg.github.com/kavishworks/c4e-mule-parent</url>
+        </repository>
         <repository>
             <id>anypoint-exchange-v3</id>
             <name>Anypoint Exchange</name>

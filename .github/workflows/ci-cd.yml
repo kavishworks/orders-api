@@ -18,6 +18,18 @@ env:
   ANYPOINT_PASSWORD: ${{ secrets.ANYPOINT_PASSWORD }}
   NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
   NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+  # GitHub Packages creds to resolve the C4E parent POM. GITHUB_ACTOR is provided
+  # automatically. GITHUB_TOKEN: the built-in token can read packages, but the parent
+  # lives in a DIFFERENT repo (kavishworks/c4e-mule-parent) — if that package is private,
+  # grant this repo access to it in the package settings, or replace with a PAT secret
+  # that has read:packages (set PACKAGES_TOKEN and swap the line below).
+  GITHUB_ACTOR: ${{ github.actor }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+# Needed so the built-in GITHUB_TOKEN can read GitHub Packages
+permissions:
+  contents: read
+  packages: read
 
 jobs:
   # ----------------------------------------------------------------------
@@ -45,13 +57,15 @@ jobs:
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
 
-      # THE QUALITY GATES: MUnit runs in `mvn verify`; coverage < 80% fails the build
-      # (failBuild=true in the pom). Sonar runs in the same pass.
+      # THE QUALITY GATE: -Pprod activates the C4E parent's prod profile
+      # (requiredCoverage=80, failBuild=true) so coverage < 80% FAILS the build.
+      # Without -Pprod the parent's safe defaults (0/false) apply and the gate
+      # would silently never fire. Sonar runs in the same pass.
       - name: Build, run MUnit + coverage gate, Sonar scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          mvn -B -s .github/settings.xml clean verify \
+          mvn -B -s .github/settings.xml -Pprod clean verify \
             org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
             -Dsonar.token=$SONAR_TOKEN
 
